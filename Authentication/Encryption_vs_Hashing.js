@@ -15,21 +15,60 @@ npm install bcryptjs mongoose
 
 */
 
-const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+});
+
+// Hash the password before saving to the database
+userSchema.pre("save", async function (next) {
+  const user = this;
+
+  if (!user.isModified("password")) return next();
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(user.password, salt);
+    user.password = hashedPassword;
+    next();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+//app.js
+
+const User = mongoose.model("User", userSchema);
+
+module.exports = User;
+
+const mongoose = require("mongoose");
 const User = require("./userModel"); // Adjust the path accordingly
 
-const loginUser = async (username, password) => {
-  try {
-    const user = await User.findOne({ username });
-    const hashedPassword = await bcrypt.hash(user.password, 10);
-    if (user && (await bcrypt.compare(password, hashedPassword))) {
-      console.log("Login successful");
-    } else {
-      console.log("Invalid username or password");
-    }
-  } catch (error) {
-    console.error("Error during login:", error.message);
-  }
-};
+mongoose.connect("mongodb://localhost:27017/yourdbname", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
-loginUser("exampleuser", "securepassword");
+const db = mongoose.connection;
+
+db.on("error", console.error.bind(console, "MongoDB connection error:"));
+db.once("open", async () => {
+  try {
+    const newUser = new User({
+      username: "exampleuser",
+      password: "securepassword",
+    });
+
+    await newUser.save();
+    console.log("User created successfully");
+  } catch (error) {
+    console.error("Error creating user:", error.message);
+  } finally {
+    // Close the MongoDB connection
+    db.close();
+  }
+});
